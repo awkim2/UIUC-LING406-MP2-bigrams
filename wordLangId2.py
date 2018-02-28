@@ -1,6 +1,7 @@
 import os
 import sys
 from math import log
+from math import exp
 
 #Import english training data; the other languages and the testing data set do the same thing so not repeating comments
 def import_training_data_english():
@@ -83,38 +84,55 @@ def make_bigram(data):
 
     return(bigram)
 
-#For my advanced feature, I decided to implement good-turing smoothing
+#For my advanced feature, I decided to implement simple good-turing smoothing
 def good_turing_bigram_smoothing(bigram):
-    #For good turing smoothing, I need to get the number of bigrams that only exist a single time
-    #The total number of bigram instances we've found
-    #And the unique bigrams we've found
-    number_of_single_bigrams=0
-    total_bigrams=0
-    number_of_existing_pairs=0
+    #create the dataset for my linear regression
+    # count of counts will store c values
+    #occurence of count will store the coressponding Nc value
+    count_of_counts=[]
+    occurence_of_count=[]
     for parent in bigram.keys():
-        for big in bigram[parent].keys():
-            if bigram[parent][big]==1:
-                number_of_single_bigrams+=1
-            number_of_existing_pairs+=1
-            total_bigrams+=bigram[parent][big]
+        for child in bigram[parent].keys():
+            count = bigram[parent][child]
+            if count in count_of_counts:
+                occurence_of_count[count_of_counts.index(count)]+=1
+            else:
+                count_of_counts.append(count)
+                occurence_of_count.append(1)
 
-    #Then, we define the probability that a bigram has just 1 occurence as number of single/total bigrams
-    probability_of_bigram_with_1_occurence=number_of_single_bigrams/total_bigrams
+    # The lines of code from here until the b0 are slightly modified lines of code from
+    #https://machinelearningmastery.com/implement-simple-linear-regression-scratch-python/
+    #since I did not want to import a linear regression function from a library that may or may not exist on other machines
+    #All they do is calculate the linear regression for the Nc versus the log(c)
+    #So that the log space linear regression can be used to approximate missing Nc values
+    def mean(values):
+        return sum(values) / float(len(values))
+    def variance(values, mean):
+        return sum([(x - mean) ** 2 for x in values])
+    occurence_of_count2 = [log(x) for x in occurence_of_count]
+    def covariance(x, mean_x, y, mean_y):
+        covar = 0.0
+        for i in range(len(x)):
+            covar += (x[i] - mean_x) * (y[i] - mean_y)
+        return covar
+    x_mean, y_mean = mean(count_of_counts), mean(occurence_of_count2)
+    b1 = covariance(count_of_counts, x_mean, occurence_of_count2, y_mean) / variance(count_of_counts, x_mean)
+    b0 = y_mean - b1 * x_mean
 
-    #The next step is to multiply every single bigram count by this probability value
-    #To make space for all the 0 value'd bigrams that we're creating "cap space" for
+    #Update the counts as the good-turing smoothing wants us too
     for parent in bigram.keys():
-        for big in bigram[parent].keys():
-            bigram[parent][big]=bigram[parent][big]*(1-probability_of_bigram_with_1_occurence)
+        for child in bigram[parent].keys():
+            old_count = bigram[parent][child]
+            if old_count in count_of_counts:
+                if old_count+1 in count_of_counts:
+                    #if both Nc and Nc+1 are not 0, simply apply the formula c+1*Nc+1/Nc
+                    bigram[parent][child] = (old_count+1) * (occurence_of_count[count_of_counts.index(old_count+1)]/occurence_of_count[count_of_counts.index(old_count)])
+                else:
+                    # if Nc+1 is 0, simply apply the formula c+1*Nc+1/Nc where Nc+1 is calculated from the linear regression above
+                    bigram[parent][child]= old_count+1 * ((old_count+1)*exp(b0+b1*(old_count+1))/exp((b0+b1*old_count))/occurence_of_count[count_of_counts.index(old_count)])
+    #Otherwise for c=0, the new probability value is N1/N
+    bigram['NONEXISTANT_BIGRAM']=occurence_of_count[count_of_counts.index(1)]/(len(bigram.keys())*len(bigram.keys())-sum(occurence_of_count))
 
-    #Finally, i added a key to the bigram for the case where the bigram doesnt exist in our dictionary
-    # this is simply the
-    # total probability that the bigram has a 1 occurence
-    # divided by
-    # total number of possible bigrams- the number of existing bigrams
-    # ie probability of one occurence/number of bigrams with 0 occurence
-
-    bigram['NONEXISTANT_BIGRAM']=probability_of_bigram_with_1_occurence/(len(bigram.keys())*len(bigram.keys())-number_of_existing_pairs)
     return(bigram)
 
 #Get the probability of this bigram
@@ -133,7 +151,6 @@ def get_prob(bigram,parent,word):
             return(bigram['NONEXISTANT_BIGRAM'])
     else:
         return (bigram['NONEXISTANT_BIGRAM'])
-
     return(val/total)
 
 def return_language(number,sentence):
@@ -146,11 +163,12 @@ def return_language(number,sentence):
         chance[1]+= log(get_prob(french_bigram, sentence[word], sentence[word + 1]))
         chance[2]+= log(get_prob(italian_bigram, sentence[word], sentence[word + 1]))
     #select the biggest number (aka the smallest one since log probailities are negative, as the language of choice
+    #print(chance)
     print(number, language[chance.index(max(chance))])
 
 if __name__ == "__main__":
     #declare the output to go to this file
-    sys.stdout = open(os.getcwd()+'/plain/output.txt', "w")
+    sys.stdout = open(os.getcwd()+'/wordLangId2.out', "w")
     #Import and make smoothed bigrams for all 3 languages
     english_data=import_training_data_english()
     english_bigram=good_turing_bigram_smoothing(make_bigram(english_data))

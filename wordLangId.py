@@ -84,25 +84,26 @@ def make_bigram(data):
     return(bigram)
 
 #Get the probability of this bigram
-def get_prob(bigram,parent,word):
-    #total is the number of times we saw word w-1
-    total=0
-    if parent in bigram.keys():
-        for key in bigram[parent].keys():
-            total += bigram[parent][key]
-        # val is the number of times w appeared given this parent w-1
-        if word in bigram[parent].keys():
-            val = bigram[parent][word]+1
-        # If the bigram doesnt exist, the probability of it is 1/number of bigram keys plus unigram keys (aka vocab size)
-        else:
-            val = 1
-            total=total+len(bigram.keys())
-    # If the bigram doesnt exist, the probability of it is 1/number of unigram keys
-    else:
-        val = 1
-        total = len(bigram.keys())
+def get_prob_add_one_smoothed(bigram,parent,word):
+    # ALL IT TOOK FOR ME TO IMPLEMENT LAPLACE ADD 1 SMOOTHING WAS 2 LINES IM SO BOTHERED
+    # I LITERALLY SPENT LIKE 5 HOURS UNDERSTANDING THIS
 
-    return(val/total)
+    #To add one smooth my entire probability distribution, all I need to do is add 1 to the top,
+    #and the size of the vocabulary I have in the bottom
+    #So i just initialized every single possible bigram's probability with those values
+    count_of_current_word= 1
+    count_of_previous_word_plus_vocab_size= len(bigram.keys())
+
+    #Now, if the parent word (w-1) has a count, I can
+    if parent in bigram.keys():
+        # Add it to the vocab_size in the bottom
+        for key in bigram[parent].keys():
+            count_of_previous_word_plus_vocab_size += bigram[parent][key]
+        #And if w appears, I can add it to the top
+        if word in bigram[parent].keys():
+            count_of_current_word+= bigram[parent][word]
+    #return the divided probabilities
+    return(count_of_current_word/count_of_previous_word_plus_vocab_size )
 
 def return_language(number,sentence):
     language=['English', 'French', 'Italian']
@@ -110,15 +111,15 @@ def return_language(number,sentence):
     chance=[0,0,0]
     #add the log probabilities of each bigram in the sentence to the 0
     for word in range(0,len(sentence)-1):
-        chance[0]+=log(get_prob(english_bigram,sentence[word],sentence[word+1]))
-        chance[1]+= log(get_prob(french_bigram, sentence[word], sentence[word + 1]))
-        chance[2]+= log(get_prob(italian_bigram, sentence[word], sentence[word + 1]))
+        chance[0]+=log(get_prob_add_one_smoothed(english_bigram,sentence[word],sentence[word+1]))
+        chance[1]+= log(get_prob_add_one_smoothed(french_bigram, sentence[word], sentence[word + 1]))
+        chance[2]+= log(get_prob_add_one_smoothed(italian_bigram, sentence[word], sentence[word + 1]))
     #select the biggest number (aka the smallest one since log probailities are negative, as the language of choice
     print(number, language[chance.index(max(chance))])
 
 if __name__ == "__main__":
     #declare the output to go to this file
-    sys.stdout = open(os.getcwd()+'/plain/output.txt', "w")
+    sys.stdout = open(os.getcwd()+'/wordLangId.out', "w")
     #Import and make smoothed bigrams for all 3 languages
     english_data=import_training_data_english()
     english_bigram=make_bigram(english_data)
